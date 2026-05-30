@@ -14,6 +14,10 @@ export default function Dashboard() {
   const [assigning, setAssigning] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
+  const [showCreateModal, setShowCreateModal] = useState(false)
+  const [newDescription, setNewDescription] = useState('')
+  const [creating, setCreating] = useState(false)
+  const [createError, setCreateError] = useState('')
 
   const fetchAgents = useCallback(async () => {
     try {
@@ -53,13 +57,35 @@ export default function Dashboard() {
       await fetchAll()
     } catch (err) {
       const errData = err.response?.data
-      if (errData) {
-        setAssignmentResult(errData)
-      } else {
-        setError('Assignment request failed. Please try again.')
-      }
+      if (errData) setAssignmentResult(errData)
+      else setError('Assignment request failed. Please try again.')
     } finally {
       setAssigning(false)
+    }
+  }
+
+  const handleCreateOrder = async (e) => {
+    e.preventDefault()
+    setCreateError('')
+    setCreating(true)
+    try {
+      await client.post('/orders/create', { description: newDescription })
+      setShowCreateModal(false)
+      setNewDescription('')
+      await fetchOrders()
+    } catch (err) {
+      setCreateError(err.response?.data?.message || 'Failed to create order.')
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  const handleStatusChange = async (agentId, newStatus) => {
+    try {
+      await client.put(`/orders/agents/${agentId}/status`, { status: newStatus })
+      await fetchAgents()
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to update agent status.')
     }
   }
 
@@ -109,7 +135,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Assign Button */}
+        {/* Action Bar */}
         <div className="assign-bar">
           <div>
             <h2 className="assign-title">AI Order Assignment</h2>
@@ -119,17 +145,23 @@ export default function Dashboard() {
                 : 'No pending orders at this time'}
             </p>
           </div>
-          <button
-            className="btn btn-primary btn-assign"
-            onClick={handleAssign}
-            disabled={assigning || pendingCount === 0}
-          >
-            {assigning ? (
-              <><span className="spinner" /> Assigning…</>
-            ) : (
-              '🤖 Assign Orders via AI'
-            )}
-          </button>
+          <div className="action-buttons">
+            <button
+              className="btn btn-secondary btn-assign"
+              onClick={() => { setShowCreateModal(true); setCreateError('') }}
+            >
+              + New Order
+            </button>
+            <button
+              className="btn btn-primary btn-assign"
+              onClick={handleAssign}
+              disabled={assigning}
+            >
+              {assigning
+                ? <><span className="spinner" /> Assigning…</>
+                : '🤖 Assign Orders via AI'}
+            </button>
+          </div>
         </div>
 
         {/* Assignment Result */}
@@ -169,11 +201,54 @@ export default function Dashboard() {
             {activeTab === 'agents' && (
               agents.length === 0
                 ? <p className="empty-state">No agents found.</p>
-                : agents.map(agent => <AgentCard key={agent.id} agent={agent} />)
+                : agents.map(agent => (
+                    <AgentCard
+                      key={agent.id}
+                      agent={agent}
+                      onStatusChange={handleStatusChange}
+                    />
+                  ))
             )}
           </div>
         )}
       </div>
+
+      {/* Create Order Modal */}
+      {showCreateModal && (
+        <div className="modal-overlay" onClick={() => setShowCreateModal(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Create New Order</h3>
+              <button className="btn-close" onClick={() => setShowCreateModal(false)}>✕</button>
+            </div>
+            {createError && <div className="alert alert-error">{createError}</div>}
+            <form onSubmit={handleCreateOrder}>
+              <div className="form-group">
+                <label>Description</label>
+                <textarea
+                  value={newDescription}
+                  onChange={(e) => setNewDescription(e.target.value)}
+                  placeholder="e.g. Purchase office chairs for new employees"
+                  required
+                  rows={4}
+                />
+              </div>
+              <div className="modal-actions">
+                <button type="submit" className="btn btn-primary" disabled={creating}>
+                  {creating ? 'Creating…' : 'Create Order'}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setShowCreateModal(false)}
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
